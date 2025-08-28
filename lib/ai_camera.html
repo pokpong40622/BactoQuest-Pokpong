@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Basic styling to make the camera feed fill the container */
+        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
+        #webcam-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            /* Flip the video horizontally to act like a mirror */
+            transform: scaleX(-1);
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div id="webcam-container"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+    <script type="text/javascript">
+        // The link to your exported Teachable Machine model
+        const URL = "https://teachablemachine.withgoogle.com/models/VVj_LDF40/";
+
+        let model, webcam, maxPredictions;
+        let currentPrediction = "";
+
+        // Main function to load the model and start the webcam
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            const flip = true; // Use the front-facing camera
+            webcam = new tmImage.Webcam(400, 400, flip); 
+            await webcam.setup(); // Request camera access
+            await webcam.play();
+            
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            
+            window.requestAnimationFrame(loop);
+        }
+
+        // Main loop to continuously get predictions
+        async function loop() {
+            webcam.update(); 
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // Run the model on the current webcam frame
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            let highestProb = 0;
+            let bestClass = "";
+
+            for (let i = 0; i < maxPredictions; i++) {
+                if (prediction[i].probability > highestProb) {
+                    highestProb = prediction[i].probability;
+                    bestClass = prediction[i].className;
+                }
+            }
+            
+            // If the best prediction has changed, send it to Flutter
+            if (bestClass && bestClass !== currentPrediction) {
+                currentPrediction = bestClass;
+                // 'PredictionHandler' is the channel that Flutter listens to.
+                if (window.PredictionHandler) {
+                    window.PredictionHandler.postMessage(currentPrediction);
+                }
+            }
+        }
+
+        // Start the process
+        init();
+    </script>
+</body>
+</html>
